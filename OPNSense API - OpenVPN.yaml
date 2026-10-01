@@ -1,0 +1,192 @@
+zabbix_export:
+  version: '7.0'
+  template_groups:
+    - uuid: 2425ceb6ff45429aa88c7969e21b628e
+      name: OPNSense
+  templates:
+    - uuid: e606ebcf93904b51b26ad4f18a6ca892
+      template: 'OPNSense API'
+      name: 'OPNSense API'
+      groups:
+        - name: OPNSense
+      items:
+        - uuid: 8e53e35f349b42079ff0714eb518b0c5
+          name: 'OpenVPN Sessions - raw'
+          type: HTTP_AGENT
+          key: openvpn.sessions.raw
+          value_type: TEXT
+          trends: '0'
+          authtype: BASIC
+          username: '{$OPNSENSE.KEY}'
+          password: '{$OPNSENSE.SECRET}'
+          url: 'https://192.168.0.2:5070/api/openvpn/service/searchSessions'
+          tags:
+            - tag: OpenVPN
+              value: 'JSON Raw'
+      discovery_rules:
+        - uuid: 6949e0562c5c4be58df0b77309a9cf5e
+          name: 'OpenVPN Servers Discovery'
+          type: DEPENDENT
+          key: openvpn.servers.discovery
+          delay: '0'
+          filter:
+            conditions:
+              - macro: '{#SERVER}'
+                value: .+
+                formulaid: A
+          lifetime_type: DELETE_IMMEDIATELY
+          lifetime: '0'
+          item_prototypes:
+            - uuid: 7e685ba3fb6e4d809cabf41bba21cd3c
+              name: 'Usuários Conectados {#SERVER}'
+              type: DEPENDENT
+              key: 'openvpn.server.count[{#SERVER}]'
+              delay: '0'
+              preprocessing:
+                - type: JAVASCRIPT
+                  parameters:
+                    - |
+                      var rows = JSON.parse(value).rows;
+                      var count = 0;
+                      rows.forEach(function(r) {
+                        if (r.description === '{#SERVER}' && r.common_name) {
+                          count++;
+                        }
+                      });
+                      return count;
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: Servidores
+          master_item:
+            key: openvpn.sessions.raw
+          lld_macro_paths:
+            - lld_macro: '{#SERVER}'
+              path: $.SERVER
+          preprocessing:
+            - type: JAVASCRIPT
+              parameters:
+                - |
+                  var rows = JSON.parse(value).rows;
+                  var seen = {};
+                  var out = [];
+                  rows.forEach(function(r) {
+                    if (r.description && !seen[r.description]) {
+                      seen[r.description] = true;
+                      out.push({ "SERVER": r.description });
+                    }
+                  });
+                  return JSON.stringify(out);
+        - uuid: 4fda6fb50e3c466d92ccdb9128d00488
+          name: 'OpenVPN Usuários Discovery'
+          type: DEPENDENT
+          key: openvpn.usuarios.discovery
+          delay: '0'
+          filter:
+            conditions:
+              - macro: '{#CLIENT_ID}'
+                value: '^[0-9]+$'
+                formulaid: A
+              - macro: '{#COMMON_NAME}'
+                value: .+
+                formulaid: B
+          lifetime_type: DELETE_IMMEDIATELY
+          lifetime: '0'
+          item_prototypes:
+            - uuid: f488e1f37dc64437aa9216e0f6215c3b
+              name: '[{#DESCRIPTION}] {#COMMON_NAME} - Bytes enviados'
+              type: DEPENDENT
+              key: 'openvpn.user.bytes_enviados[{#CLIENT_ID}]'
+              delay: '0'
+              units: B
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rows[?(@.client_id == ''{#CLIENT_ID}'')].bytes_sent.first()'
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: Rede
+            - uuid: b220effc53384af5b23c49a96ace73d6
+              name: '[{#DESCRIPTION}] {#COMMON_NAME} - Bytes recebidos'
+              type: DEPENDENT
+              key: 'openvpn.user.bytes_recebidos[{#CLIENT_ID}]'
+              delay: '0'
+              units: B
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rows[?(@.client_id == ''{#CLIENT_ID}'')].bytes_received.first()'
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: Rede
+            - uuid: 7d412563d77f43e39d8ac575b1ee565f
+              name: '[{#DESCRIPTION}] {#COMMON_NAME} - Conectado desde'
+              type: DEPENDENT
+              key: 'openvpn.user.connected_since[{#CLIENT_ID}]'
+              delay: '0'
+              trends: '0'
+              units: unixtime
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rows[?(@.client_id == ''{#CLIENT_ID}'')].connected_since__time_t_.first()'
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: Status
+            - uuid: fc2adf7ff8af44798fbd590ef4954d8b
+              name: '[{#DESCRIPTION}] {#COMMON_NAME} - IP real'
+              type: DEPENDENT
+              key: 'openvpn.user.real_address[{#CLIENT_ID}]'
+              delay: '0'
+              value_type: CHAR
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rows[?(@.client_id == ''{#CLIENT_ID}'')].real_address.first()'
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: IP
+            - uuid: cd5556d28cc24abe98f9c0b213edfa67
+              name: '[{#DESCRIPTION}] {#COMMON_NAME} - IP virtual'
+              type: DEPENDENT
+              key: 'openvpn.user.virtual_address[{#CLIENT_ID}]'
+              delay: '0'
+              value_type: CHAR
+              trends: '0'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.rows[?(@.client_id == ''{#CLIENT_ID}'')].virtual_address.first()'
+              master_item:
+                key: openvpn.sessions.raw
+              tags:
+                - tag: OpenVPN
+                  value: IP
+          master_item:
+            key: openvpn.sessions.raw
+          lld_macro_paths:
+            - lld_macro: '{#CLIENT_ID}'
+              path: $.client_id
+            - lld_macro: '{#COMMON_NAME}'
+              path: $.common_name
+            - lld_macro: '{#DESCRIPTION}'
+              path: $.description
+            - lld_macro: '{#VIRTUAL_ADDRESS}'
+              path: $.virtual_address
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - $.rows
+      tags:
+        - tag: Firewall
+          value: OPNSense
